@@ -43,7 +43,7 @@
         "java": ">=21",
         "fabric-api": "*",
         "starrailexpress": "~4.3.0",
-        "habitrain_core": ">=2.0.19"
+        "habitrain_core": ">=2.0.37"
     },
     "suggests": {
         "modmenu": "*"

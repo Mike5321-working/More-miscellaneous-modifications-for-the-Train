@@ -6,6 +6,9 @@ import net.exmo.sre.record.MatchRecord;
 import net.exmo.sre.record.client.ClientMatchRecordCache;
 import net.exmo.sre.record.client.MatchRecordsScreen;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
+import com.habitrain.core.api.client.replay.MatchReplayClientApi;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.ChatFormatting;
@@ -85,6 +88,9 @@ public abstract class MatchRecordsScreenMixin extends Screen implements MatchRec
     @Unique
     private boolean habi$recordUnavailable;
 
+    @Unique private Button habi$viewReplay;
+    @Unique private Button habi$exportReplay;
+
     protected MatchRecordsScreenMixin(Component title) {
         super(title);
     }
@@ -93,6 +99,39 @@ public abstract class MatchRecordsScreenMixin extends Screen implements MatchRec
     private void habi$refreshOnFirstOpen(CallbackInfo ci) {
         if (this.selectedMatchId == null && this.selectedIndex < 0) {
             ClientMatchRecordCache.resetWindows();
+        }
+    }
+
+    @Inject(method = "init", at = @At("RETURN"))
+    private void habi$addReplayButtons(CallbackInfo ci) {
+        int gap = 6, buttonWidth = Math.min(118, (width - 26) / 2);
+        int x = (width - buttonWidth * 2 - gap) / 2;
+        int y = height - 42;
+        habi$viewReplay = addRenderableWidget(Button.builder(
+                Component.translatable("screen.habitrain_core.replay_history.view_button"), b -> habi$openReplay(false))
+                .bounds(x, y, buttonWidth, 17).build());
+        habi$viewReplay.setTooltip(Tooltip.create(Component.translatable("screen.habitrain_core.replay_history.view_tip")));
+        habi$exportReplay = addRenderableWidget(Button.builder(
+                Component.translatable("screen.habitrain_core.replay_history.export"), b -> habi$openReplay(true))
+                .bounds(x + buttonWidth + gap, y, buttonWidth, 17).build());
+        habi$exportReplay.setTooltip(Tooltip.create(Component.translatable("screen.habitrain_core.replay_history.export_tip")));
+        habi$updateReplayButtons();
+    }
+
+    @Inject(method = "render", at = @At("HEAD"))
+    private void habi$refreshReplayButtons(GuiGraphics g, int x, int y, float delta, CallbackInfo ci) {
+        habi$updateReplayButtons();
+    }
+
+    @Unique
+    private void habi$updateReplayButtons() {
+        if (habi$viewReplay != null) habi$viewReplay.active = habi$exportReplay.active = this.selectedMatchId != null;
+    }
+
+    @Unique
+    private void habi$openReplay(boolean export) {
+        if (this.minecraft != null && this.selectedMatchId != null) {
+            this.minecraft.setScreen(MatchReplayClientApi.open(this, this.selectedMatchId, export));
         }
     }
 
