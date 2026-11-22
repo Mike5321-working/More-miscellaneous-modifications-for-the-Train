@@ -90,7 +90,8 @@ public final class InventorySkinApplier {
         }
         DisguiseIdentityBridge.Resolution resolved =
                 identity == null ? DisguiseIdentityBridge.Resolution.self() : identity;
-        if (resolved.kind() == DisguiseIdentityBridge.Kind.HIDDEN_ANONYMOUS) {
+        if (resolved.kind() == DisguiseIdentityBridge.Kind.HIDDEN_ANONYMOUS
+                && !resolved.allowsOwnSkinFor(type)) {
             return TargetComponents.NONE;
         }
         UUID skinOwner = resolved.kind() == DisguiseIdentityBridge.Kind.DISGUISED_AS

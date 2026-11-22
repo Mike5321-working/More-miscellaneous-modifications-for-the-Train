@@ -95,9 +95,10 @@ public abstract class IndependentSkinRendererMixin {
         if (holder != null && SkinPreviewContext.currentFor(holder) == null) {
             DisguiseIdentityBridge.Resolution identity = DisguiseIdentityBridge.Client.resolve(holder);
             if (identity.kind() == DisguiseIdentityBridge.Kind.HIDDEN_ANONYMOUS) {
-                return model;
-            }
-            if (identity.kind() == DisguiseIdentityBridge.Kind.DISGUISED_AS) {
+                if (!identity.allowsOwnSkinFor(SkinItems.typeOf(stack))) {
+                    return model;
+                }
+            } else if (identity.kind() == DisguiseIdentityBridge.Kind.DISGUISED_AS) {
                 return habi$resolveDisguisedModel(holder, identity.targetUuid(), stack, inHand, model);
             }
         }

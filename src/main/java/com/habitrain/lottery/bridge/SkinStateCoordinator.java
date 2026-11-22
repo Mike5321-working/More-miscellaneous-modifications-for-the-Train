@@ -52,6 +52,7 @@ public final class SkinStateCoordinator {
         long hash = 1125899906842597L;
         DisguiseIdentityBridge.Resolution identity = DisguiseIdentityBridge.resolveServer(player);
         hash = hash * 31 + identity.kind().ordinal();
+        hash = hash * 31 + (identity.psychoMode() ? 1 : 0);
         hash = hash * 31 + Objects.hashCode(identity.targetUuid());
         int size = player.getInventory().getContainerSize();
         hash = hash * 31 + size;

@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -45,6 +46,8 @@ class InventorySkinApplierDisguiseTest {
             SkinSounds.register("knife", "killer_signature");
             HabiSkinApi.register(SkinDefinition.builder("knife", "victim_blade", SkinQuality.BLUE).build());
             SkinSounds.register("knife", "victim_blade");
+            HabiSkinApi.register(SkinDefinition.builder("bat", "killer_baguette", SkinQuality.RED).build());
+            SkinSounds.register("bat", "killer_baguette");
         } finally {
             HabiSkinApi.endProvider(prev);
         }
@@ -52,6 +55,9 @@ class InventorySkinApplierDisguiseTest {
         assertTrue(PlayerLotteryStore.get().applyToPlayerWithRollback(killerUuid, d -> {
             d.unlocked.computeIfAbsent("knife", k -> new HashMap<>()).put("killer_signature", true);
             d.equipped.put("knife", "killer_signature");
+            d.unlocked.computeIfAbsent("bat", k -> new HashMap<>()).put("killer_baguette", true);
+            d.equipped.put("bat", "killer_baguette");
+            d.disabledSkinSounds.add("bat/killer_baguette");
         }));
         assertTrue(PlayerLotteryStore.get().applyToPlayerWithRollback(victimUuid, d -> {
             d.unlocked.computeIfAbsent("knife", k -> new HashMap<>()).put("victim_blade", true);
@@ -92,5 +98,33 @@ class InventorySkinApplierDisguiseTest {
                 "knife", null, killerUuid, DisguiseIdentityBridge.Resolution.disguisedAs(skinlessVictim));
         assertNull(disguisedSkinless.skinEntry(),
                 "DISGUISED_AS targeting a player with no skin must strip the killer's own skin");
+    }
+
+    @Test
+    void psychoModeAllowsBatSkinWhileKeepingOtherCosmeticsHidden() {
+        var psycho = DisguiseIdentityBridge.Resolution.psycho();
+        assertEquals(DisguiseIdentityBridge.Kind.HIDDEN_ANONYMOUS, psycho.kind(),
+                "Psycho mode must stay HIDDEN_ANONYMOUS so body cosmetics remain hidden");
+        assertTrue(psycho.psychoMode());
+        assertTrue(psycho.allowsOwnSkinFor("bat"));
+        assertFalse(psycho.allowsOwnSkinFor("knife"));
+        assertFalse(psycho.allowsOwnSkinFor("back"));
+
+        var psychoBat = InventorySkinApplier.resolveTargetComponents("bat", null, killerUuid, psycho);
+        assertEquals("bat/killer_baguette", psychoBat.skinEntry(),
+                "Psycho mode must still apply the player's equipped bat skin");
+        assertEquals(Boolean.FALSE, psychoBat.customSound(),
+                "Psycho mode must preserve the player's bat custom sound preference");
+
+        var psychoKnife = InventorySkinApplier.resolveTargetComponents("knife", null, killerUuid, psycho);
+        assertNull(psychoKnife.skinEntry(),
+                "Psycho mode must keep non-bat weapon skins hidden");
+        assertNull(psychoKnife.customSound(),
+                "Psycho mode must keep non-bat custom sounds stripped");
+
+        var nonPsychoHiddenBat = InventorySkinApplier.resolveTargetComponents(
+                "bat", null, killerUuid, DisguiseIdentityBridge.Resolution.hidden());
+        assertNull(nonPsychoHiddenBat.skinEntry(),
+                "Non-psycho HIDDEN_ANONYMOUS (e.g. disguise effect) must still strip bat skins");
     }
 }

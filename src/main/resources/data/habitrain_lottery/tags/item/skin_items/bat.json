@@ -12,6 +12,10 @@
     {
       "id": "starrailexpress:bat",
       "required": false
+    },
+    {
+      "id": "noellesroles:fake_bat",
+      "required": false
     }
   ]
 }

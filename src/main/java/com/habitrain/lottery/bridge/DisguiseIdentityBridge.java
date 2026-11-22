@@ -40,9 +40,14 @@ public final class DisguiseIdentityBridge {
         HIDDEN_ANONYMOUS
     }
 
-    public record Resolution(Kind kind, UUID targetUuid) {
-        private static final Resolution SELF_INSTANCE = new Resolution(Kind.SELF, null);
-        private static final Resolution HIDDEN_INSTANCE = new Resolution(Kind.HIDDEN_ANONYMOUS, null);
+    public record Resolution(Kind kind, UUID targetUuid, boolean psychoMode) {
+        private static final Resolution SELF_INSTANCE = new Resolution(Kind.SELF, null, false);
+        private static final Resolution HIDDEN_INSTANCE = new Resolution(Kind.HIDDEN_ANONYMOUS, null, false);
+        private static final Resolution PSYCHO_INSTANCE = new Resolution(Kind.HIDDEN_ANONYMOUS, null, true);
+
+        public Resolution(Kind kind, UUID targetUuid) {
+            this(kind, targetUuid, false);
+        }
 
         public static Resolution self() {
             return SELF_INSTANCE;
@@ -52,8 +57,20 @@ public final class DisguiseIdentityBridge {
             return HIDDEN_INSTANCE;
         }
 
+        /**
+         * Active psycho mode: body/non-bat cosmetics stay anonymous ({@link Kind#HIDDEN_ANONYMOUS}),
+         * while {@code "bat"} skins remain enabled because bats are specifically granted by psycho mode.
+         */
+        public static Resolution psycho() {
+            return PSYCHO_INSTANCE;
+        }
+
         public static Resolution disguisedAs(UUID targetUuid) {
-            return targetUuid == null ? SELF_INSTANCE : new Resolution(Kind.DISGUISED_AS, targetUuid);
+            return targetUuid == null ? SELF_INSTANCE : new Resolution(Kind.DISGUISED_AS, targetUuid, false);
+        }
+
+        public boolean allowsOwnSkinFor(String skinType) {
+            return kind == Kind.SELF || (psychoMode && "bat".equals(skinType));
         }
     }
 
@@ -93,7 +110,7 @@ public final class DisguiseIdentityBridge {
             }
             SREPlayerPsychoComponent psycho = SREPlayerPsychoComponent.KEY.getNullable(subject);
             if (psycho != null && psycho.psychoTicks > 0) {
-                return Resolution.hidden();
+                return Resolution.psycho();
             }
             if (RoleUtils.isPlayerTheJob(subject, TMMRoles.LOOSE_END)
                     || RoleUtils.isPlayerTheJob(subject, SpecialGameModeRoles.SUPER_LOOSE_END)) {
@@ -168,7 +185,14 @@ public final class DisguiseIdentityBridge {
                 if (SRE.isLobby || io.wifi.starrailexpress.client.SREClient.isInLobby) {
                     return Resolution.self();
                 }
-                if (player.hasEffect(ModEffects.DISGUISE) || isConcealedByFixedSkin(player)) {
+                if (player.hasEffect(ModEffects.DISGUISE)) {
+                    return Resolution.hidden();
+                }
+                if (io.wifi.starrailexpress.client.SREClient.PLAYER_PSYCHO_CACHE
+                        .getOrDefault(player.getUUID(), false)) {
+                    return Resolution.psycho();
+                }
+                if (isConcealedByFixedSkin(player)) {
                     return Resolution.hidden();
                 }
                 UUID ownerUuid = io.wifi.starrailexpress.hat.HatEquipmentApi.resolveDisplayedOwnerUuid(player);
@@ -181,10 +205,6 @@ public final class DisguiseIdentityBridge {
         }
 
         private static boolean isConcealedByFixedSkin(net.minecraft.client.player.AbstractClientPlayer player) {
-            if (io.wifi.starrailexpress.client.SREClient.PLAYER_PSYCHO_CACHE
-                    .getOrDefault(player.getUUID(), false)) {
-                return true;
-            }
             if (io.wifi.starrailexpress.client.SREClient.getLooseEndPenalty()) {
                 return true;
             }
