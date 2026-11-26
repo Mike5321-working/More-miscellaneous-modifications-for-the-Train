@@ -10,6 +10,7 @@ import com.habitrain.lottery.api.skin.client.SkinSoundPreferences;
 import com.habitrain.lottery.client.SkinClient;
 import com.habitrain.lottery.client.WardrobeExtras;
 import com.habitrain.lottery.skin.SkinNetwork;
+import com.mojang.blaze3d.systems.RenderSystem;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -19,6 +20,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.FormattedText;
 import net.minecraft.locale.Language;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.Util;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
@@ -63,10 +65,13 @@ public final class SkinWardrobeScreen extends Screen {
     private List<String> knownTitles = List.of();
     private long requestAt, pendingAt;
     private int attempts;
+    private long ownedCount, totalCount;
+    private Entry cachedSelectedEntry;
     private Component notice = text("loading");
 
     private record Entry(String id, Component name, boolean owned, boolean equipped,
-                         boolean available, int color, ItemStack icon, SkinQuality quality) {}
+                         boolean available, int color, ItemStack icon, SkinQuality quality,
+                         ResourceLocation flatIcon) {}
 
     public SkinWardrobeScreen(Screen parent) { super(text("title")); this.parent = parent; }
     private static Component text(String key, Object... args) {
@@ -214,14 +219,14 @@ public final class SkinWardrobeScreen extends Screen {
         if (titles()) {
             // Upstream only accepts owned title IDs; do not offer an unsupported clear request.
             if (titleEquipped.isBlank()) list.add(new Entry("default", text("no_title"), true, true, true,
-                    BRASS, NAME_TAG_ICON, null));
+                    BRASS, NAME_TAG_ICON, null, null));
             for (String id : knownTitles.stream().filter(s -> s != null && !s.isBlank()).distinct().toList()) {
                 list.add(new Entry(id, Component.translatableWithFallback(id, id), true,
-                        id.equals(titleEquipped), true, BRASS, NAME_TAG_ICON, null));
+                        id.equals(titleEquipped), true, BRASS, NAME_TAG_ICON, null, null));
             }
         } else if (received) {
             boolean hasEquipped = SkinClient.entries().stream().anyMatch(e -> e.type().equals(type()) && e.equipped());
-            list.add(new Entry("default", text("default"), true, !hasEquipped, true, MUTED, defaultIcon(), null));
+            list.add(new Entry("default", text("default"), true, !hasEquipped, true, MUTED, defaultIcon(), null, null));
             for (var entry : SkinClient.entries()) {
                 if (!type().equals(entry.type())) continue;
                 var definition = HabiSkinApi.find(entry.type(), entry.id());
@@ -229,13 +234,31 @@ public final class SkinWardrobeScreen extends Screen {
                 // against ModelManager#getMissingModel never matched (audit F-01), which
                 // made this branch unreachable and let model-less skins be equipped.
                 boolean available = definition.isPresent() && SkinClient.hasModel(entry.type(), entry.id());
+                ResourceLocation flatIcon = null;
+                if ("hat".equals(entry.type()) && definition.isPresent() && minecraft != null) {
+                    ResourceLocation candidate = ResourceLocation.fromNamespaceAndPath(
+                            definition.get().model().getNamespace(),
+                            "textures/gui/hat_icons/" + entry.id() + ".png");
+                    if (minecraft.getResourceManager().getResource(candidate).isPresent()) {
+                        flatIcon = candidate;
+                    }
+                }
                 list.add(new Entry(entry.id(), skinName(entry.type(), entry.id()),
                         entry.owned(), entry.equipped(), available,
                         entry.quality().color(),
-                        SkinItems.preview(entry.type() + "/" + entry.id()), entry.quality()));
+                        SkinItems.preview(entry.type() + "/" + entry.id()), entry.quality(), flatIcon));
             }
         }
         catalog = List.copyOf(list);
+        long owned = 0, total = 0;
+        for (Entry e : catalog) {
+            if (!"default".equals(e.id())) {
+                total++;
+                if (e.owned()) owned++;
+            }
+        }
+        ownedCount = owned;
+        totalCount = total;
         String term = query.strip().toLowerCase(Locale.ROOT);
         Comparator<Entry> comparator = Comparator.comparing(e -> e.name().getString().toLowerCase(Locale.ROOT));
         if (!sortByName) comparator = Comparator.comparing((Entry e) -> !e.equipped())
@@ -252,6 +275,7 @@ public final class SkinWardrobeScreen extends Screen {
                 .sorted(comparator.thenComparing(Entry::id)).toList();
         page = Math.max(0, Math.min(page, pages() - 1));
         if (visible.stream().noneMatch(e -> e.id().equals(selected))) selected = visible.isEmpty() ? "" : visible.getFirst().id();
+        refreshSelectedEntry();
         buildCards(); updateControls();
     }
     private ItemStack defaultIcon() {
@@ -272,7 +296,22 @@ public final class SkinWardrobeScreen extends Screen {
     private ItemStack headStack(Entry entry) { return "hat".equals(type()) ? previewStack(entry) : ItemStack.EMPTY; }
     private boolean model3d() { return view3d && !titles() && PlayerPreview.available(); }
     private int pages() { return Math.max(1, (visible.size() + layout.pageSize() - 1) / layout.pageSize()); }
-    private Entry selectedEntry() { return catalog.stream().filter(e -> e.id().equals(selected)).findFirst().orElse(null); }
+    private void refreshSelectedEntry() {
+        cachedSelectedEntry = null;
+        for (Entry e : catalog) {
+            if (e.id().equals(selected)) {
+                cachedSelectedEntry = e;
+                return;
+            }
+        }
+    }
+    private Entry selectedEntry() {
+        if (cachedSelectedEntry != null && cachedSelectedEntry.id().equals(selected)) {
+            return cachedSelectedEntry;
+        }
+        refreshSelectedEntry();
+        return cachedSelectedEntry;
+    }
     private void buildCards() {
         String focusedId = getFocused() instanceof TileButton tile ? tile.entry.id() : null;
         if (focusedId != null) setFocused(null);
@@ -412,9 +451,7 @@ public final class SkinWardrobeScreen extends Screen {
         g.fill(x, y, x + 3, y + 28, BRASS);
         g.drawString(font, title, x + 12, y + 13, INK, false);
         if (!hats.visible) {
-            long owned = catalog.stream().filter(e -> e.owned() && !"default".equals(e.id())).count();
-            long total = catalog.stream().filter(e -> !"default".equals(e.id())).count();
-            Component count = !received && !titles() ? text("loading") : text("collection", owned, total);
+            Component count = !received && !titles() ? text("loading") : text("collection", ownedCount, totalCount);
             g.drawString(font, count, x + w - 12 - font.width(count), y + 13, MUTED, false);
         }
         renderDetail(g);
@@ -473,6 +510,17 @@ public final class SkinWardrobeScreen extends Screen {
         return text(entry.equipped() ? "equipped" : !entry.available() ? "missing" : entry.owned() ? "owned" : "locked");
     }
     private void drawIcon(GuiGraphics g, Entry entry, int cx, int cy, int size) {
+        if (entry.flatIcon() != null) {
+            g.flush();
+            RenderSystem.enableBlend();
+            RenderSystem.defaultBlendFunc();
+            try {
+                g.blit(entry.flatIcon(), cx - size / 2, cy - size / 2, size, size, 0.0F, 0.0F, 64, 64, 64, 64);
+            } finally {
+                RenderSystem.disableBlend();
+            }
+            return;
+        }
         if (entry.icon().isEmpty()) { g.drawCenteredString(font, "?", cx, cy - 4, MUTED); return; }
         g.pose().pushPose();
         try {
@@ -514,7 +562,7 @@ public final class SkinWardrobeScreen extends Screen {
         TileButton(int x, int y, Entry entry) {
             super(x, y, layout.cardWidth(), layout.cardHeight(), entry.name().copy().append(" · ").append(state(entry))
                             .append(entry.quality() == null ? Component.empty() : Component.literal(" · ").append(SkinQualityStyle.label(entry.quality()))),
-                    b -> { selected = entry.id(); updateControls(); });
+                    b -> { selected = entry.id(); cachedSelectedEntry = entry; updateControls(); });
             this.entry = entry;
             Component tooltip = entry.name().copy().append("\n").append(state(entry)).append("\n" + entry.id());
             if (entry.quality() != null) tooltip = tooltip.copy().append("\n").append(SkinQualityStyle.label(entry.quality()));

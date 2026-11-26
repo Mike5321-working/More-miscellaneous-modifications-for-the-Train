@@ -10,11 +10,13 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 
 /** Item bindings use registry ids or data-pack tags, never upstream Java item classes. */
 public final class SkinItems {
@@ -25,8 +27,15 @@ public final class SkinItems {
      * {@link TagKey#create} calls per slot per player per tick.
      */
     private static final Map<String, TagKey<Item>> TYPE_TAGS = buildTypeTags();
-    /** Copy-on-write immutable snapshot so render/tick lookups in {@link #typeOf} are lock-free. */
-    private static volatile Map<ResourceLocation, String> BINDINGS = Map.of();
+    /** Lock-free lookup map for hot-path {@link #typeOf} and {@link #boundType} queries. */
+    private static final ConcurrentHashMap<ResourceLocation, String> FAST_BINDINGS = new ConcurrentHashMap<>();
+    /** Authoritative registration-order bindings, guarded by {@link HabiSkinApi#REGISTRY_LOCK}. */
+    private static final Map<ResourceLocation, String> ORDERED_BINDINGS = new LinkedHashMap<>();
+    /** Authoritative per-type lists in registration order, guarded by {@link HabiSkinApi#REGISTRY_LOCK}. */
+    private static final Map<String, List<ResourceLocation>> MUTABLE_BY_TYPE = new LinkedHashMap<>();
+    /** Lazily materialized immutable snapshots invalidated on mutation (zero per-bind full-map copy at startup). */
+    private static volatile Map<ResourceLocation, String> BINDINGS_SNAPSHOT = Map.of();
+    private static volatile Map<String, List<ResourceLocation>> BY_TYPE_SNAPSHOT = Map.of();
     private static final Map<ResourceLocation, String> BINDING_PROVIDERS = new LinkedHashMap<>();
     /**
      * Vanilla stand-ins used when the data-pack tag lists no installed item, so a preview
@@ -50,37 +59,112 @@ public final class SkinItems {
         return Map.copyOf(tags);
     }
 
+    private static void invalidateSnapshots() {
+        if (ORDERED_BINDINGS.isEmpty()) {
+            BINDINGS_SNAPSHOT = Map.of();
+            BY_TYPE_SNAPSHOT = Map.of();
+        } else {
+            BINDINGS_SNAPSHOT = null;
+            BY_TYPE_SNAPSHOT = null;
+        }
+    }
+
+    private static void addBindingLocked(ResourceLocation item, String canonical) {
+        ORDERED_BINDINGS.put(item, canonical);
+        FAST_BINDINGS.put(item, canonical);
+        MUTABLE_BY_TYPE.computeIfAbsent(canonical, k -> new ArrayList<>()).add(item);
+        invalidateSnapshots();
+    }
+
+    private static String removeBindingLocked(ResourceLocation item) {
+        String prevType = ORDERED_BINDINGS.remove(item);
+        if (prevType != null) {
+            FAST_BINDINGS.remove(item);
+            List<ResourceLocation> list = MUTABLE_BY_TYPE.get(prevType);
+            if (list != null) {
+                list.remove(item);
+                if (list.isEmpty()) {
+                    MUTABLE_BY_TYPE.remove(prevType);
+                }
+            }
+            invalidateSnapshots();
+        }
+        return prevType;
+    }
+
+    private static Map<ResourceLocation, String> bindingsSnapshot() {
+        Map<ResourceLocation, String> snapshot = BINDINGS_SNAPSHOT;
+        if (snapshot != null) {
+            return snapshot;
+        }
+        synchronized (HabiSkinApi.REGISTRY_LOCK) {
+            snapshot = BINDINGS_SNAPSHOT;
+            if (snapshot == null) {
+                snapshot = ORDERED_BINDINGS.isEmpty()
+                        ? Map.of()
+                        : Collections.unmodifiableMap(new LinkedHashMap<>(ORDERED_BINDINGS));
+                BINDINGS_SNAPSHOT = snapshot;
+            }
+            return snapshot;
+        }
+    }
+
+    private static Map<String, List<ResourceLocation>> byTypeSnapshot() {
+        Map<String, List<ResourceLocation>> snapshot = BY_TYPE_SNAPSHOT;
+        if (snapshot != null) {
+            return snapshot;
+        }
+        synchronized (HabiSkinApi.REGISTRY_LOCK) {
+            snapshot = BY_TYPE_SNAPSHOT;
+            if (snapshot == null) {
+                if (MUTABLE_BY_TYPE.isEmpty()) {
+                    snapshot = Map.of();
+                } else {
+                    Map<String, List<ResourceLocation>> frozen = new LinkedHashMap<>(MUTABLE_BY_TYPE.size());
+                    for (Map.Entry<String, List<ResourceLocation>> entry : MUTABLE_BY_TYPE.entrySet()) {
+                        frozen.put(entry.getKey(), List.copyOf(entry.getValue()));
+                    }
+                    snapshot = Collections.unmodifiableMap(frozen);
+                }
+                BY_TYPE_SNAPSHOT = snapshot;
+            }
+            return snapshot;
+        }
+    }
+
     public static void bindItem(ResourceLocation item, String type) {
         String canonical = SkinDefinition.normalizeType(type);
         Objects.requireNonNull(item, "item");
         synchronized (HabiSkinApi.REGISTRY_LOCK) {
             String provider = HabiSkinApi.currentProvider();
-            String previous = BINDINGS.get(item);
+            String previous = ORDERED_BINDINGS.get(item);
             if (previous != null && !previous.equals(canonical)) {
                 throw new IllegalStateException("Conflicting skin item: " + item);
             }
             if (previous == null) {
-                Map<ResourceLocation, String> next = new LinkedHashMap<>(BINDINGS);
-                next.put(item, canonical);
-                BINDINGS = Collections.unmodifiableMap(next);
+                addBindingLocked(item, canonical);
                 String prevProvider = provider == null
                         ? BINDING_PROVIDERS.remove(item)
                         : BINDING_PROVIDERS.put(item, provider);
                 SkinRegistrationTransaction.recordUndo(() -> {
-                    if (canonical.equals(BINDINGS.get(item))) {
-                        Map<ResourceLocation, String> restored = new LinkedHashMap<>(BINDINGS);
-                        restored.remove(item);
-                        BINDINGS = Collections.unmodifiableMap(restored);
-                    }
-                    if (prevProvider == null) {
-                        BINDING_PROVIDERS.remove(item);
-                    } else {
-                        BINDING_PROVIDERS.put(item, prevProvider);
+                    synchronized (HabiSkinApi.REGISTRY_LOCK) {
+                        if (canonical.equals(ORDERED_BINDINGS.get(item))) {
+                            removeBindingLocked(item);
+                        }
+                        if (prevProvider == null) {
+                            BINDING_PROVIDERS.remove(item);
+                        } else {
+                            BINDING_PROVIDERS.put(item, prevProvider);
+                        }
                     }
                 });
             } else if (provider != null && !BINDING_PROVIDERS.containsKey(item)) {
                 BINDING_PROVIDERS.put(item, provider);
-                SkinRegistrationTransaction.recordUndo(() -> BINDING_PROVIDERS.remove(item));
+                SkinRegistrationTransaction.recordUndo(() -> {
+                    synchronized (HabiSkinApi.REGISTRY_LOCK) {
+                        BINDING_PROVIDERS.remove(item);
+                    }
+                });
             }
         }
     }
@@ -90,7 +174,7 @@ public final class SkinItems {
             return;
         }
         synchronized (HabiSkinApi.REGISTRY_LOCK) {
-            List<ResourceLocation> owned = new java.util.ArrayList<>();
+            List<ResourceLocation> owned = new ArrayList<>();
             for (Map.Entry<ResourceLocation, String> entry : BINDING_PROVIDERS.entrySet()) {
                 if (providerId.equals(entry.getValue())) {
                     owned.add(entry.getKey());
@@ -99,44 +183,47 @@ public final class SkinItems {
             if (owned.isEmpty()) {
                 return;
             }
-            Map<ResourceLocation, String> next = new LinkedHashMap<>(BINDINGS);
             for (ResourceLocation item : owned) {
-                String prevType = next.remove(item);
+                String prevType = removeBindingLocked(item);
                 String prevProvider = BINDING_PROVIDERS.remove(item);
                 if (prevType != null) {
                     SkinRegistrationTransaction.recordUndo(() -> {
-                        Map<ResourceLocation, String> restored = new LinkedHashMap<>(BINDINGS);
-                        restored.put(item, prevType);
-                        BINDINGS = Collections.unmodifiableMap(restored);
-                        if (prevProvider != null) {
-                            BINDING_PROVIDERS.put(item, prevProvider);
+                        synchronized (HabiSkinApi.REGISTRY_LOCK) {
+                            if (!ORDERED_BINDINGS.containsKey(item)) {
+                                addBindingLocked(item, prevType);
+                            }
+                            if (prevProvider != null) {
+                                BINDING_PROVIDERS.put(item, prevProvider);
+                            }
                         }
                     });
                 }
             }
-            BINDINGS = Collections.unmodifiableMap(next);
         }
     }
 
     static void clearForTest() {
         synchronized (HabiSkinApi.REGISTRY_LOCK) {
-            BINDINGS = Map.of();
+            ORDERED_BINDINGS.clear();
+            FAST_BINDINGS.clear();
+            MUTABLE_BY_TYPE.clear();
             BINDING_PROVIDERS.clear();
+            invalidateSnapshots();
         }
     }
 
     /** Immutable snapshot of explicitly registered item-to-skin-type bindings in registration order. */
     public static Map<ResourceLocation, String> bindings() {
-        return BINDINGS;
+        return bindingsSnapshot();
     }
 
     static String boundType(ResourceLocation item) {
-        return item == null ? null : BINDINGS.get(item);
+        return item == null ? null : FAST_BINDINGS.get(item);
     }
 
     public static String typeOf(ItemStack stack) {
         if (stack == null || stack.isEmpty()) return null;
-        String bound = BINDINGS.get(BuiltInRegistries.ITEM.getKey(stack.getItem()));
+        String bound = FAST_BINDINGS.get(BuiltInRegistries.ITEM.getKey(stack.getItem()));
         if (bound != null) return bound;
         for (String type : TYPES) {
             TagKey<Item> tag = TYPE_TAGS.get(type);
@@ -203,9 +290,12 @@ public final class SkinItems {
      * registration order so the first extension to bind an item owns the preview base.
      */
     private static Item firstBoundItem(String canonicalType) {
-        for (Map.Entry<ResourceLocation, String> binding : BINDINGS.entrySet()) {
-            if (!canonicalType.equals(binding.getValue())) continue;
-            Item item = BuiltInRegistries.ITEM.get(binding.getKey());
+        List<ResourceLocation> items = byTypeSnapshot().get(canonicalType);
+        if (items == null || items.isEmpty()) {
+            return null;
+        }
+        for (ResourceLocation itemId : items) {
+            Item item = BuiltInRegistries.ITEM.get(itemId);
             if (item != null && item != Items.AIR) return item;
         }
         return null;

@@ -26,10 +26,11 @@ UI、水印、字幕和鼠标已移除；表面贴图经透视校正后贴在实
 
 先构建，再单独启动录制，不能并发运行两份 Gradle 客户端。
 
-```powershell
-.\gradlew.bat build --no-daemon --gradle-user-home "D:\Backup\mc mod\.gradle-user-home"
-.\gradlew.bat -I tools\crate-smoke.gradle runClient --no-daemon --gradle-user-home "D:\Backup\mc mod\.gradle-user-home" -PcrateSmokeW=1920 -PcrateSmokeH=1080 -PcrateSmokeScale=2 -PcrateSmokeOut=frames-release-hd
-powershell -ExecutionPolicy Bypass -File tools\crate-smoke\render-video.ps1 -FrameFolder frames-release-hd -Out "D:\Backup\mc mod\临时\开箱动画-1.1.35-1080p.mp4"
+```bash
+./gradlew build --no-daemon
+./gradlew -I tools/crate-smoke.gradle runClient --no-daemon -PcrateSmokeW=1920 -PcrateSmokeH=1080 -PcrateSmokeScale=2 -PcrateSmokeOut=frames-release-hd
+# 如需在 Linux 下合成视频，需安装 pwsh 后运行：
+pwsh -File tools/crate-smoke/render-video.ps1 -FrameFolder frames-release-hd -Out "/home/Mike/mc mod/临时/开箱动画-1.1.35-1080p.mp4"
 ```
 
 `-PcrateSmokeChecks=true` 额外点击取消、重新打开确认框，再确认开箱。

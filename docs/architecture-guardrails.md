@@ -24,5 +24,5 @@
 
 ## 4. 构建与进程清理规范
 
-- 一切 Gradle 构建、测试与冒烟命令必须使用项目自带 Wrapper 并附带 `--no-daemon`（如 `.\gradlew.bat build --no-daemon`）。
+- 一切 Gradle 构建、测试与冒烟命令必须使用项目自带 Wrapper 并附带 `--no-daemon`（如 `./gradlew build --no-daemon`）。
 - 禁止盲目删除 `fabric-loom` 下的 `.lock` 0 字节文件锁，仅清理已确认 PID 死亡的 `.pid` 记录文件。

@@ -13,6 +13,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.model.BakedModel;
+import net.minecraft.client.resources.model.ModelResourceLocation;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import org.slf4j.Logger;
@@ -37,12 +39,31 @@ public final class SkinClient {
             // because addModels only accepts a collection of ids.
             Set<ResourceLocation> requested = new LinkedHashSet<>();
             for (var skin : HabiSkinApi.registrations()) {
-                requested.add(skin.model());
-                requested.add(skin.model(true));
+                // If the skin points at an already-registered item's own model (<ns>:item/<id>),
+                // Minecraft already bakes ModelResourceLocation(<ns>:<id>, "inventory"); reuse it
+                // instead of baking a duplicate standalone copy for hundreds of hat items.
+                if (existingItemInventoryModel(skin.model()) == null) {
+                    requested.add(skin.model());
+                }
+                // Hats and back cosmetics do not have separate in-hand weapon variants; for weapon
+                // skins, only ask the bakery to load _in_hand when the optional json exists.
+                if (supportsInHandVariant(skin.type())) {
+                    ResourceLocation inHand = skin.model(true);
+                    if (modelResourceExists(inHand)) {
+                        requested.add(inHand);
+                    }
+                }
                 ResourceLocation legacy = skin.legacyModel(false);
                 if (legacy != null) {
-                    requested.add(legacy);
-                    requested.add(skin.legacyModel(true));
+                    if (modelResourceExists(legacy)) {
+                        requested.add(legacy);
+                    }
+                    if (supportsInHandVariant(skin.type())) {
+                        ResourceLocation legacyInHand = skin.legacyModel(true);
+                        if (modelResourceExists(legacyInHand)) {
+                            requested.add(legacyInHand);
+                        }
+                    }
                 }
             }
             requested.forEach(ctx::addModels);
@@ -96,15 +117,51 @@ public final class SkinClient {
         return SkinAnimationModels.animate(definition, model);
     }
 
+    private static boolean supportsInHandVariant(String type) {
+        return !"hat".equals(type) && !"back".equals(type);
+    }
+
+    private static ModelResourceLocation existingItemInventoryModel(ResourceLocation modelId) {
+        if (modelId == null) {
+            return null;
+        }
+        String path = modelId.getPath();
+        if (!path.startsWith("item/")) {
+            return null;
+        }
+        String itemPath = path.substring("item/".length());
+        if (itemPath.isEmpty() || itemPath.indexOf('/') >= 0) {
+            return null;
+        }
+        ResourceLocation itemId = ResourceLocation.tryBuild(modelId.getNamespace(), itemPath);
+        if (itemId == null || !BuiltInRegistries.ITEM.containsKey(itemId)) {
+            return null;
+        }
+        return new ModelResourceLocation(itemId, "inventory");
+    }
+
+    private static boolean modelResourceExists(ResourceLocation modelId) {
+        if (modelId == null) {
+            return false;
+        }
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.getResourceManager() == null) {
+            return true;
+        }
+        ResourceLocation jsonId = modelId.withPath("models/" + modelId.getPath() + ".json");
+        return mc.getResourceManager().getResource(jsonId).isPresent();
+    }
+
     private static BakedModel resolveModel(SkinDefinition definition, boolean inHand) {
-        BakedModel model = bakedModel(definition.model(inHand));
+        boolean tryInHand = inHand && supportsInHandVariant(definition.type());
+        BakedModel model = bakedModel(definition.model(tryInHand));
         // The in-hand model is optional: fall back to the base model, then the
         // original item, exactly as docs/skin-api.md promises.
-        if (model == null && inHand) model = bakedModel(definition.model());
+        if (model == null && tryInHand) model = bakedModel(definition.model());
         if (model == null && definition.usesDefaultModel()) {
             // v1 resolved the same default model under starrailexpress; try it so
             // extensions that have not been recompiled keep working (audit F-04).
-            model = legacyLookup(definition, inHand);
+            model = legacyLookup(definition, tryInHand);
         }
         return model;
     }
@@ -119,7 +176,7 @@ public final class SkinClient {
     public static boolean hasModel(String type, String id) {
         return HabiSkinApi.find(type, id)
                 .map(definition -> resolveModel(definition, false) != null
-                        || (!"back".equals(definition.type()) && resolveModel(definition, true) != null))
+                        || (supportsInHandVariant(definition.type()) && resolveModel(definition, true) != null))
                 .orElse(false);
     }
 
@@ -134,9 +191,17 @@ public final class SkinClient {
         }
         BakedModel model;
         try {
+            var modelManager = Minecraft.getInstance().getModelManager();
+            ModelResourceLocation itemLoc = existingItemInventoryModel(id);
+            if (itemLoc != null) {
+                BakedModel itemModel = modelManager.getModel(itemLoc);
+                if (!isMissing(itemModel)) {
+                    return itemModel;
+                }
+            }
             // FabricBakedModelManager.getModel(ResourceLocation): a bare map lookup that
             // returns null for an id that is not in the baked table.
-            model = Minecraft.getInstance().getModelManager().getModel(id);
+            model = modelManager.getModel(id);
         } catch (RuntimeException e) {
             LOGGER.debug("Model lookup failed for {}", id, e);
             return null;

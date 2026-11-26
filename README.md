@@ -32,8 +32,8 @@ mods/
   habitrain_core-2.0.19.jar
 ```
 
-```powershell
-.\gradlew.bat build --no-daemon
+```bash
+./gradlew build --no-daemon
 ```
 
 `assemble` 会把最终 jar 复制到项目旁的 `临时` 目录。`check` 还会验证独立皮肤目录没有重新依赖上游实现或旧资源。

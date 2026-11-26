@@ -1566,5 +1566,22 @@
   "screen.habitrain_lottery.records.unavailable": "未能读取这场对局。可以再次点击左侧记录重试，或按 R 刷新。",
   "screen.habitrain_lottery.records.too_large": "这场对局的记录超出传输上限，完整记录仍保存在服务器。",
   "screen.habitrain_lottery.records.upgrade_required": "请更新哈比列车抽奖补齐以查看这场较长的对局记录。",
-  "habitrain_lottery.records.player_summary": "%1$s：总获得 +%2$s 金币（初始 +%3$s · 自然 +%4$s · 任务×%5$s +%6$s · 击杀/拾取 +%7$s · 技能/其他 +%8$s）· 商店消费×%9$s -%10$s · 其他消耗 -%11$s · 结余 %12$s"
+  "habitrain_lottery.records.player_summary": "%1$s：总获得 +%2$s 金币（初始 +%3$s · 自然 +%4$s · 任务×%5$s +%6$s · 击杀/拾取 +%7$s · 技能/其他 +%8$s）· 商店消费×%9$s -%10$s · 其他消耗 -%11$s · 结余 %12$s",
+  "screen.habitrain_lottery.records.nearby_table.connected": "已连接附近大厅回放桌",
+  "screen.habitrain_lottery.records.nearby_table.preparing": "载入中",
+  "screen.habitrain_lottery.records.nearby_table.finished": "终局",
+  "screen.habitrain_lottery.records.nearby_table.paused": "暂停",
+  "screen.habitrain_lottery.records.nearby_table.banner_tip": "已自动连接 16 格内的大厅回放桌（距离 %1$s 格），可直接在此同步控制或直达导出",
+  "screen.habitrain_lottery.records.nearby_table.seek_tip": "拖动或点击同步定位回放桌进度：%1$s / %2$s",
+  "screen.habitrain_lottery.records.nearby_table.play_pause_tip": "暂停 / 继续附近回放桌播放",
+  "screen.habitrain_lottery.records.nearby_table.speed_tip": "切换回放桌倍速（0.5x / 1x / 2x / 4x）",
+  "screen.habitrain_lottery.records.nearby_table.follow_short": "跟随:%s",
+  "screen.habitrain_lottery.records.nearby_table.global_short": "全局",
+  "screen.habitrain_lottery.records.nearby_table.follow_tip": "左键切换下一位跟随玩家 · 右键恢复全局沙盘",
+  "screen.habitrain_lottery.records.nearby_table.sync_screen": "大屏同步",
+  "screen.habitrain_lottery.records.nearby_table.sync_screen_tip": "在背包 3D 回放大屏直接同步预览并精调该桌面会话",
+  "screen.habitrain_lottery.records.nearby_table.export": "导出视频",
+  "screen.habitrain_lottery.records.nearby_table.export_tip": "一键将当前大厅回放桌对局直达视频导出界面",
+  "screen.habitrain_lottery.records.nearby_table.end": "⏹结束",
+  "screen.habitrain_lottery.records.nearby_table.end_tip": "结束附近回放桌本次播放并恢复待机雕塑"
 }

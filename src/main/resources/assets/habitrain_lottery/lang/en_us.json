@@ -1566,5 +1566,22 @@
   "screen.habitrain_lottery.records.unavailable": "Could not load this match. Click the entry to retry, or press R to refresh.",
   "screen.habitrain_lottery.records.too_large": "This match is too large to send. The full record is still saved on the server.",
   "screen.habitrain_lottery.records.upgrade_required": "Update HabitRain Lottery to open this longer match record.",
-  "habitrain_lottery.records.player_summary": "%1$s: Total +%2$s coins (Init +%3$s · Passive +%4$s · Tasks×%5$s +%6$s · Kill/Pickup +%7$s · Skill/Other +%8$s) · Shop×%9$s -%10$s · Other -%11$s · Final %12$s"
+  "habitrain_lottery.records.player_summary": "%1$s: Total +%2$s coins (Init +%3$s · Passive +%4$s · Tasks×%5$s +%6$s · Kill/Pickup +%7$s · Skill/Other +%8$s) · Shop×%9$s -%10$s · Other -%11$s · Final %12$s",
+  "screen.habitrain_lottery.records.nearby_table.connected": "Linked to Nearby Lobby Replay Table",
+  "screen.habitrain_lottery.records.nearby_table.preparing": "Loading",
+  "screen.habitrain_lottery.records.nearby_table.finished": "Final",
+  "screen.habitrain_lottery.records.nearby_table.paused": "Paused",
+  "screen.habitrain_lottery.records.nearby_table.banner_tip": "Connected to a nearby lobby replay table (%1$s blocks away). Control playback or export directly.",
+  "screen.habitrain_lottery.records.nearby_table.seek_tip": "Click or drag to seek the nearby table: %1$s / %2$s",
+  "screen.habitrain_lottery.records.nearby_table.play_pause_tip": "Play / pause nearby replay table",
+  "screen.habitrain_lottery.records.nearby_table.speed_tip": "Cycle table speed (0.5x / 1x / 2x / 4x)",
+  "screen.habitrain_lottery.records.nearby_table.follow_short": "POV:%s",
+  "screen.habitrain_lottery.records.nearby_table.global_short": "Global",
+  "screen.habitrain_lottery.records.nearby_table.follow_tip": "Left-click next player · Right-click global diorama",
+  "screen.habitrain_lottery.records.nearby_table.sync_screen": "Sync View",
+  "screen.habitrain_lottery.records.nearby_table.sync_screen_tip": "Open the 3D replay screen synced live with this table",
+  "screen.habitrain_lottery.records.nearby_table.export": "Export",
+  "screen.habitrain_lottery.records.nearby_table.export_tip": "Jump straight to Video Export for the table's active match",
+  "screen.habitrain_lottery.records.nearby_table.end": "⏹End",
+  "screen.habitrain_lottery.records.nearby_table.end_tip": "End the table replay session and fold back to idle"
 }

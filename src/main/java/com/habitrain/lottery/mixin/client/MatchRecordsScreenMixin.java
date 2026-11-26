@@ -1,14 +1,15 @@
 package com.habitrain.lottery.mixin.client;
 
 import com.habitrain.lottery.client.record.MatchRecordsDetailView;
+import com.habitrain.lottery.client.record.MatchRecordsNearbyTableBar;
 import com.habitrain.lottery.client.record.MatchRecordClient;
+import com.habitrain.lottery.client.record.MatchReplayTableBridge;
 import net.exmo.sre.record.MatchRecord;
 import net.exmo.sre.record.client.ClientMatchRecordCache;
 import net.exmo.sre.record.client.MatchRecordsScreen;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
-import com.habitrain.core.api.client.replay.MatchReplayClientApi;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.ChatFormatting;
@@ -47,6 +48,12 @@ public abstract class MatchRecordsScreenMixin extends Screen implements MatchRec
     @Shadow(remap = false)
     @Final
     private List<FormattedCharSequence> detailLines;
+
+    @Shadow(remap = false)
+    private int usableWidth;
+
+    @Shadow(remap = false)
+    private int panelX;
 
     @Shadow(remap = false)
     private int rightX;
@@ -90,6 +97,7 @@ public abstract class MatchRecordsScreenMixin extends Screen implements MatchRec
 
     @Unique private Button habi$viewReplay;
     @Unique private Button habi$exportReplay;
+    @Unique private final MatchRecordsNearbyTableBar habi$nearbyTableBar = new MatchRecordsNearbyTableBar();
 
     protected MatchRecordsScreenMixin(Component title) {
         super(title);
@@ -131,7 +139,7 @@ public abstract class MatchRecordsScreenMixin extends Screen implements MatchRec
     @Unique
     private void habi$openReplay(boolean export) {
         if (this.minecraft != null && this.selectedMatchId != null) {
-            this.minecraft.setScreen(MatchReplayClientApi.open(this, this.selectedMatchId, export));
+            this.minecraft.setScreen(MatchReplayTableBridge.openReplay(this, this.selectedMatchId, export));
         }
     }
 
@@ -209,6 +217,15 @@ public abstract class MatchRecordsScreenMixin extends Screen implements MatchRec
                 mouseY,
                 this.habi$showAllDetails
         );
+        this.habi$nearbyTableBar.render(
+                guiGraphics,
+                this.font,
+                this.panelX,
+                this.usableWidth,
+                this.panelY,
+                mouseX,
+                mouseY
+        );
     }
 
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
@@ -218,6 +235,20 @@ public abstract class MatchRecordsScreenMixin extends Screen implements MatchRec
             int button,
             CallbackInfoReturnable<Boolean> cir
     ) {
+        if (this.habi$nearbyTableBar.mouseClicked(
+                this,
+                this.minecraft,
+                this.font,
+                this.panelX,
+                this.usableWidth,
+                this.panelY,
+                mouseX,
+                mouseY,
+                button
+        )) {
+            cir.setReturnValue(true);
+            return;
+        }
         if (button != 0) {
             return;
         }
@@ -232,6 +263,48 @@ public abstract class MatchRecordsScreenMixin extends Screen implements MatchRec
                 mouseY
         )) {
             this.habi$toggleDetailMode();
+            cir.setReturnValue(true);
+        }
+    }
+
+    @Inject(method = "mouseDragged", at = @At("HEAD"), cancellable = true)
+    private void habi$dragNearbyTableBar(
+            double mouseX,
+            double mouseY,
+            int button,
+            double dragX,
+            double dragY,
+            CallbackInfoReturnable<Boolean> cir
+    ) {
+        if (this.habi$nearbyTableBar.mouseDragged(
+                this.font,
+                this.panelX,
+                this.usableWidth,
+                this.panelY,
+                mouseX,
+                mouseY,
+                button
+        )) {
+            cir.setReturnValue(true);
+        }
+    }
+
+    @Inject(method = "mouseReleased", at = @At("HEAD"), cancellable = true)
+    private void habi$releaseNearbyTableBar(
+            double mouseX,
+            double mouseY,
+            int button,
+            CallbackInfoReturnable<Boolean> cir
+    ) {
+        if (this.habi$nearbyTableBar.mouseReleased(
+                this.font,
+                this.panelX,
+                this.usableWidth,
+                this.panelY,
+                mouseX,
+                mouseY,
+                button
+        )) {
             cir.setReturnValue(true);
         }
     }

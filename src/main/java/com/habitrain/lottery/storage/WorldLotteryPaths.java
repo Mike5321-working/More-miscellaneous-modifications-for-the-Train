@@ -118,11 +118,11 @@ public final class WorldLotteryPaths {
     }
 
     public static Path resolveUnder(Path base, String child) {
-        if (base == null || child == null || child.isBlank()) {
+        if (base == null || child == null || child.isBlank() || child.indexOf('\0') >= 0) {
             throw new IllegalArgumentException("Invalid child path: " + child);
         }
         Path baseAbs = base.toAbsolutePath().normalize();
-        Path resolved = baseAbs.resolve(child).normalize();
+        Path resolved = baseAbs.resolve(child.replace('\\', '/')).normalize();
         if (!resolved.startsWith(baseAbs) || resolved.equals(baseAbs)) {
             throw new IllegalArgumentException("Path escapes base directory: " + child);
         }
